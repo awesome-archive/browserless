@@ -90,21 +90,14 @@
   }
   .run-container {
     cursor: pointer;
-    top: 50px;
-    right: 0;
-    position: absolute;
-    background: #333;
     color: white;
     border: none;
     font: inherit;
-    font-size: 20px;
     padding: 2px 8px;
     display: flex;
     flex-direction: row;
     align-items: center;
     z-index: 10;
-    border-top-left-radius: 5px;
-    border-bottom-left-radius: 5px;
   }
   .execute-button {
     background: #3ecf8e;
@@ -115,15 +108,18 @@
     margin: 10px;
     width: 34px;
     cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   #frame-mount::before {
     content: "";
     position: absolute;
-    top: 0; 
+    top: 0;
     left: 0;
     bottom: 0;
     right: 0;
-    opacity: .4; 
+    opacity: .4;
     z-index: -1;
     background-repeat: no-repeat;
     background-position: 50% 50%;
@@ -285,11 +281,17 @@
       <a onclick="return toggleMenu();" href="#" class="box-shadow-menu">&#9776;</a>
       <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="isolation:isolate" viewBox="1123.044 453.491 93.911 147.019" height="40"><path d=" M 1180.143 521.337 L 1193.478 527.466 L 1207.698 534.002 C 1212.807 536.35 1216.956 542.822 1216.956 548.445 L 1216.956 559.839 L 1216.956 571.233 C 1216.956 576.856 1212.807 583.328 1207.698 585.676 L 1193.478 592.212 L 1179.257 598.748 C 1174.148 601.097 1165.852 601.097 1160.742 598.748 L 1146.522 592.212 L 1132.302 585.676 C 1127.193 583.328 1123.044 576.856 1123.044 571.233 L 1123.044 559.839 L 1123.044 548.445 C 1123.044 547.762 1123.106 547.067 1123.222 546.367 L 1123.222 468.669 C 1123.222 463.978 1126.844 458.993 1131.305 457.544 L 1142.555 453.889 C 1147.016 452.439 1150.637 455.071 1150.637 459.761 L 1150.637 525.574 L 1150.659 525.564 C 1150.644 525.577 1150.636 525.584 1150.637 525.585 L 1166.521 543.39 L 1141.468 543.944 C 1141.093 543.931 1140.817 543.934 1140.632 543.956 C 1139.762 544.057 1139.006 544.357 1138.368 544.854 C 1137.607 545.508 1137.519 546.14 1138.1 546.751 L 1178.18 589.359 C 1178.858 589.988 1179.859 590.225 1181.188 590.071 C 1181.371 590.05 1181.689 589.985 1182.141 589.876 C 1182.903 589.647 1183.457 589.314 1183.802 588.878 C 1184.146 588.443 1184.201 588.013 1183.966 587.587 L 1168.776 557.871 L 1194.905 556.344 C 1195.092 556.35 1195.368 556.332 1195.735 556.289 C 1196.56 556.194 1197.252 555.959 1197.812 555.583 C 1198.588 555.068 1198.823 554.49 1198.516 553.847 L 1180.143 521.337 Z " fill-rule="evenodd" fill="#fff"/></svg>
       <h1>browserless</h1>
+
+      <div class="run-container">
+        <button class="execute-button" title="Execute Script">
+          <svg height='18' width='18' fill="#fff" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" x="0px" y="0px" viewBox="0 0 60 65" style="enable-background:new 0 0 60 60;" xml:space="preserve"><path d="M5.4,8V52c0,4.3,4.7,7,8.4,4.9l38-22c3.7-2.2,3.7-7.5,0-9.7l-38-22C10.1,1,5.4,3.7,5.4,8z"></path></svg>
+        </button>
+      </div>
     <section class="links">
       <span id="download" title="Download a zip file with all the required packages">
         <svg width='22' height='22' fill="#fff" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" x="0px" y="0px" viewBox="0 0 100 100" enable-background="new 0 0 100 100" xml:space="preserve"><path d="M67,43.7l5.3,5.3L49.5,71.8L26.7,49l5.3-5.3l13.7,13.7v-30h7.5v30L67,43.7z M94.5,50c0,24.8-20.2,45-45,45s-45-20.2-45-45  s20.2-45,45-45S94.5,25.2,94.5,50z M87,50c0-20.7-16.8-37.5-37.5-37.5S12,29.3,12,50s16.8,37.5,37.5,37.5S87,70.7,87,50z"></path></svg>
       </span>
-      <a href="https://github.com/joelgriffith/browserless">
+      <a href="https://github.com/browserless/chrome">
         <svg fill="#333" width="22" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title id="simpleicons-github-icon">Browserless on GitHub</title><path fill="#fff" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
       </a>
       <span id="about">
@@ -304,16 +306,6 @@
   </div>
   <div class="flex-hz">
     <section id="code-mount">
-      <div class="run-container">
-          <button class="execute-button" title="Execute Script">
-            <svg height='20' width='20' fill="#fefefe" version="1.1" x="0px" y="0px" viewBox="0 0 100 100" enable-background="new 0 0 100 100" xml:space="preserve">
-              <path d="M20.796,34l-6.036-5.987c-1.122-1.124-2.938-1.092-4.062,0.028c-1.123,1.12-1.126,2.956-0.007,4.079l6.879,6.468  C18.108,39.128,18.841,39,19.604,39h5.596c-3.985,5-6.601,11-7.569,17H7.872C6.285,56,5,57.413,5,59c0,1.586,1.285,3,2.872,3h9.335  c0.05,5,1.315,10,3.522,14h-2.083c-0.763,0-1.495,0.436-2.034,0.977l-6.878,6.965c-1.12,1.123-1.118,2.975,0.005,4.095  c0.562,0.559,1.294,0.855,2.028,0.855c0.736,0,1.473-0.278,2.033-0.841L19.839,82h4.638C30.127,89,39,93.544,48,94.055V34H20.796z"></path>
-              <path d="M92.128,56h-9.961c-1.24-6-4.434-12-8.176-17h6.405c0.763,0,1.495,0.137,2.034-0.404l6.879-6.679  c1.119-1.124,1.116-2.832-0.007-3.952c-1.125-1.121-2.941-1.131-4.062-0.007L79.204,34H52v60.033C61,93.447,69.713,88,75.363,82  h4.798l6.038,6.059c0.561,0.563,1.297,0.847,2.033,0.847c0.734,0,1.467-0.279,2.028-0.837c1.123-1.12,1.125-2.938,0.005-4.061  l-6.878-7.031C82.849,76.436,82.116,76,81.354,76h-2.2c2.234-4,3.517-9,3.567-14h9.407C93.715,62,95,60.586,95,59  C95,57.413,93.715,56,92.128,56z"></path>
-              <path d="M31.421,30h37.158c0-7-3.473-12.264-8.687-15.555l3.75-3.673c1.122-1.121,1.122-2.902,0-4.024  c-1.122-1.121-2.939-1.102-4.062,0.02l-5.424,5.434c-1.338-0.306-2.726-0.478-4.157-0.478s-2.819,0.179-4.157,0.485l-5.425-5.423  c-1.122-1.121-2.939-1.121-4.062,0s-1.122,2.941,0,4.063l3.75,3.597C34.894,17.737,31.421,23,31.421,30z"></path>
-            </svg>
-          </button>
-          DEBUG
-      </div>
       <textarea style="visibility: hidden;">
 module.exports = async ({ page }) => {
   await page.goto('https://example.com');
@@ -349,11 +341,11 @@ module.exports = async ({ page }) => {
   const secure = /(https)|(wss)/g.test(protocol);
   const AUTO_COMPLETE_AFTER_KEY = /^[a-zA-Z0-9_@(]$/;
   const globalVars = [
-    { text: 'debugger;', description: 'The debugger statement invokes any available debugging functionality, such as setting a breakpoint. If no debugging functionality is available, this statement has no effect.' }, 
-    { text: 'await', description: 'The await operator is used to wait for a Promise. It can only be used inside an async function.' }, 
-    { text: 'page' }, 
-    { text: 'console', description: 'Outputs a message to the Web Console.' }, 
-    { text: 'function', description: 'A function is a code snippet that can be called by other code or by itself, or a variable that refers to the function. When a function is called, arguments are passed to the function as input, and the function can optionally return an output. A function in JavaScript is also an object.' }, 
+    { text: 'debugger;', description: 'The debugger statement invokes any available debugging functionality, such as setting a breakpoint. If no debugging functionality is available, this statement has no effect.' },
+    { text: 'await', description: 'The await operator is used to wait for a Promise. It can only be used inside an async function.' },
+    { text: 'page' },
+    { text: 'console', description: 'Outputs a message to the Web Console.' },
+    { text: 'function', description: 'A function is a code snippet that can be called by other code or by itself, or a variable that refers to the function. When a function is called, arguments are passed to the function as input, and the function can optionally return an output. A function in JavaScript is also an object.' },
     { text: 'const', description: 'Constants are block-scoped, much like variables defined using the let statement. The value of a constant cannot change through re-assignment, and it can\'t be redeclared.' },
     { text: 'var', description: 'The variable statement declares a variable, optionally initializing it to a value.' },
     { text: 'let', description: 'The let statement declares a block scope local variable, optionally initializing it to a value.' },
@@ -437,20 +429,7 @@ const puppeteer = require('puppeteer');
     }
   });
 
-  const updateURL = () => {
-    let newSearch = '?' + Object.keys(parameters).filter(function (key) {
-      return Boolean(parameters[key]);
-    }).map(function (key) {
-      return encodeURIComponent(key) + '=' +
-        encodeURIComponent(parameters[key]);
-    }).join('&');
-    history.replaceState(null, null, newSearch);
-  }
-
-  const onEditScript = (script) => {
-    parameters.script = script;
-    updateURL();
-  }
+  const onEditScript = (script) => parameters.script = script;
 
   const hints = [
     `Press CTRL+Enter to run your script`,
@@ -493,7 +472,8 @@ const puppeteer = require('puppeteer');
   function fetchSessions() {
     if (!isSidebarOpen) return;
 
-    return fetch(`${baseURL}/sessions`, { 
+    return fetch(`${baseURL}/sessions`, {
+      credentials: 'same-origin',
       headers: {
         'Accept': 'application/json',
       }
@@ -581,7 +561,7 @@ const puppeteer = require('puppeteer');
       const readMoreHref = ctx.href ?
         '<a href="' + ctx.href + '" target="_blank">...Read more</a>' :
         '';
-      
+
       const descriptionText = ctx.description ?
         `<h4>Description</h4>` + description.outerHTML :
         '';
@@ -604,6 +584,7 @@ const puppeteer = require('puppeteer');
 
   const editor = CodeMirror.fromTextArea($codeText, {
     lineNumbers: true,
+    lineWrapping: true,
     showCursorWhenSelecting: true,
     mode: {
       name: 'javascript',
@@ -624,9 +605,16 @@ const puppeteer = require('puppeteer');
     },
     keyMap: 'sublime',
   });
+  const charWidth = editor.defaultCharWidth()
+  const basePadding = 4;
 
   editor.on('keyup', (cm, event) => AUTO_COMPLETE_AFTER_KEY.test(event.key) && editor.execCommand('autocomplete'));
   editor.on('hasCompletion', onHasCompletion);
+  editor.on('renderLine', (cm, line, elt) => {
+    const off = CodeMirror.countColumn(line.text, null, cm.getOption('tabSize')) * charWidth;
+    elt.style.textIndent = '-' + off + 'px';
+    elt.style.paddingLeft = (basePadding + off) + 'px';
+  });
 
   const loadIframe = (code) => {
     if (document.querySelector('.intro')) {
@@ -637,7 +625,7 @@ const puppeteer = require('puppeteer');
     document.cookie = `browserless_code=${stringifiedCode}`;
     const wsLocation = `${hostname}${port ? `:${port}` : ''}/debugger`;
 
-    $debugFrame.src = `https://chrome-devtools-frontend.appspot.com/serve_file/@${debuggerVersion}/inspector.html?remoteFrontend=true&${secure ? 'wss' : 'ws'}=${wsLocation}`;
+    $debugFrame.src = `/devtools/inspector.html?${secure ? 'wss' : 'ws'}=${wsLocation}`;
   };
 
   $resizer.addEventListener('mousedown', (evt) => {
@@ -683,6 +671,7 @@ const puppeteer = require('puppeteer');
   });
 
   fetch(`${baseURL}/introspection`, {
+    credentials: 'same-origin',
     headers: {
       'Accept': 'application/json',
     }
@@ -691,6 +680,7 @@ const puppeteer = require('puppeteer');
   .then((hints) => pageMethods = pageMethods.concat(hints))
 
   fetch(`${baseURL}/json/version`, {
+    credentials: 'same-origin',
     headers: {
       'Accept': 'application/json',
     }
@@ -705,23 +695,6 @@ const puppeteer = require('puppeteer');
     $about.title = aboutTitle;
     puppeteerVersion = res['Puppeteer-Version'];
   });
-</script>
-
-<!-- Fathom metrics on our public demo -->
-<script>
-if (window.__is_demo_machine__) {
-  (function(f, a, t, h, o, m){
-    a[h]=a[h]||function(){
-      (a[h].q=a[h].q||[]).push(arguments)
-    };
-    o=f.createElement('script'),
-    m=f.getElementsByTagName('script')[0];
-    o.async=1; o.src=t; o.id='fathom-script';
-    m.parentNode.insertBefore(o,m)
-  })(document, window, '//analytics.browserless.io/tracker.js', 'fathom');
-  fathom('set', 'siteId', 'JGAKA');
-  fathom('trackPageview');
-}
 </script>
 </body>
 </html>

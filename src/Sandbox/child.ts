@@ -1,15 +1,18 @@
 import * as _ from 'lodash';
 import * as puppeteer from 'puppeteer';
-import * as url from 'url';
 import { NodeVM } from 'vm2';
 
-import { ILaunchOptions, launchChrome } from '../chrome-helper';
-import { IMessage } from '../models/sandbox.interface';
-import { ISandboxOpts } from '../models/sandbox.interface';
+import { launchChrome } from '../chrome-helper';
 import { getDebug } from '../utils';
 
+import {
+  ILaunchOptions,
+  IMessage,
+  ISandboxOpts,
+  consoleMethods,
+} from '../types';
+
 const debug = getDebug('sandbox');
-type consoleMethods = 'log' | 'warn' | 'debug' | 'table' | 'info';
 
 const send = (msg: IMessage) => {
   debug(`Sending parent message: ${JSON.stringify(msg)}`);
@@ -45,9 +48,17 @@ const start = async (
 ) => {
   debug(`Starting sandbox running code "${code}"`);
 
-  const browser = await launchChrome(opts);
-  const browserWsEndpoint = browser.wsEndpoint();
-  const page: any = await browser.newPage();
+  process.on('unhandledRejection', (error) => {
+    debug(`uncaughtException error: ${error}`);
+    send({
+      error: JSON.stringify(error),
+      event: 'error',
+    });
+  });
+
+  const browser = await launchChrome(opts, false);
+  const page = await browser.newPage();
+
   page.on('error', (error: Error) => {
     debug(`Page error: ${error.message}`);
     send({
@@ -55,8 +66,22 @@ const start = async (
       event: 'error',
     });
   });
+
+  page.on('request', (request) => {
+    if (request.url().startsWith('file://')) {
+      page.browser().close();
+    }
+  });
+
+  page.on('response', (response) => {
+    if (response.url().startsWith('file://')) {
+      page.browser().close();
+    }
+  });
+
+  // @ts-ignore
   const pageLocation = `/devtools/page/${page._target._targetId}`;
-  const port = url.parse(browserWsEndpoint).port;
+  const port = browser._parsed.port;
   const data = {
     context: {
       port,
@@ -74,6 +99,7 @@ const start = async (
     require: sandboxOpts,
     sandbox,
   });
+
   const handler = vm.run(code);
 
   await handler({ page, context: {} });

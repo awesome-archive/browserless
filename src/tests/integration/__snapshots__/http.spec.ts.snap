@@ -5,18 +5,18 @@ Array [
   "chromeRefreshTime",
   "connectionTimeout",
   "demoMode",
+  "disabledFeatures",
+  "enableAPIGet",
   "enableCors",
-  "enableDebugViewer",
-  "enableDebugger",
-  "enableXvfb",
+  "errorAlertURL",
   "exitOnHealthFailure",
   "functionBuiltIns",
+  "functionEnableIncognitoMode",
   "functionExternals",
   "healthFailureURL",
   "host",
   "keepAlive",
   "maxCPU",
-  "maxChromeRefreshRetries",
   "maxConcurrentSessions",
   "maxMemory",
   "maxQueueLength",
@@ -25,16 +25,22 @@ Array [
   "prebootChrome",
   "queuedAlertURL",
   "rejectAlertURL",
+  "singleRun",
   "timeoutAlertURL",
   "token",
   "workspaceDir",
 ]
 `;
 
-exports[`Browserless Chrome HTTP allows requests to /json/protocol 1`] = `
+exports[`Browserless Chrome HTTP allows requests to /json/new 1`] = `
 Array [
-  "domains",
-  "version",
+  "description",
+  "devtoolsFrontendUrl",
+  "targetId",
+  "title",
+  "type",
+  "url",
+  "webSocketDebuggerUrl",
 ]
 `;
 
@@ -47,6 +53,7 @@ Array [
   "WebKit-Version",
   "Debugger-Version",
   "Puppeteer-Version",
+  "webSocketDebuggerUrl",
 ]
 `;
 
@@ -63,6 +70,10 @@ Array [
   "queued",
   "recentlyRejected",
   "running",
+  "maxConcurrent",
+  "maxQueued",
+  "cpu",
+  "memory",
 ]
 `;
 

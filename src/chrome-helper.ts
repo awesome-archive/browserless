@@ -1,13 +1,27 @@
 import { ChildProcess } from 'child_process';
 // @ts-ignore no types
 import * as chromeDriver from 'chromedriver';
-import * as express from 'express';
-import * as fs from 'fs';
-import { IncomingMessage } from 'http';
 import * as _ from 'lodash';
+import * as path from 'path';
 import * as puppeteer from 'puppeteer';
+import { ParsedUrlQuery } from 'querystring';
+import { Transform } from 'stream';
 import * as url from 'url';
-import { canLog, fetchJson, getDebug, getUserDataDir, rimraf } from './utils';
+
+import { Features } from './features';
+import { browserHook, pageHook } from './hooks';
+import { fetchJson, getDebug, getUserDataDir, rimraf } from './utils';
+
+import {
+  IBrowser,
+  IBrowserlessSessionOptions,
+  ILaunchOptions,
+  IWindowSize,
+  ISession,
+  IChromeDriver,
+  IHTTPRequest,
+  IJSONList,
+} from './types';
 
 import {
   DEFAULT_BLOCK_ADS,
@@ -17,58 +31,199 @@ import {
   DEFAULT_LAUNCH_ARGS,
   DEFAULT_USER_DATA_DIR,
   DISABLE_AUTO_SET_DOWNLOAD_BEHAVIOR,
-  ENABLE_DEBUG_VIEWER,
+  DISABLED_FEATURES,
   HOST,
   PORT,
+  PROXY_HOST,
+  PROXY_PORT,
+  PROXY_SSL,
   WORKSPACE_DIR,
 } from './config';
 
 const debug = getDebug('chrome-helper');
 const getPort = require('get-port');
-const packageJson = require('puppeteer/package.json');
-const CHROME_BINARY_LOCATION = '/usr/bin/google-chrome';
-const BROWSERLESS_ARGS = ['--no-sandbox', '--disable-dev-shm-usage', '--enable-logging', '--v1=1'];
-const blacklist = require('../hosts.json');
+const treekill = require('tree-kill');
+const {
+  CHROME_BINARY_LOCATION,
+  USE_CHROME_STABLE,
+  PUPPETEER_CHROMIUM_REVISION,
+} = require('../env');
 
-let executablePath: string;
+const BROWSERLESS_ARGS = [
+  '--no-sandbox',
+  '--enable-logging',
+  '--v1=1',
+  '--disable-dev-shm-usage',
+];
+
+const blacklist = require('../hosts.json');
+const networkBlock = (request: puppeteer.Request) => {
+  const fragments = request.url().split('/');
+  const domain = fragments.length > 2 ? fragments[2] : null;
+  if (blacklist.includes(domain)) {
+    return request.abort();
+  }
+  return request.continue();
+};
+
 let runningBrowsers: IBrowser[] = [];
 
-export interface IChromeDriver {
-  port: number;
-  chromeProcess: ChildProcess;
-}
+const parseIgnoreDefaultArgs = (query: ParsedUrlQuery): string[] | boolean => {
+  const defaultArgs = query.ignoreDefaultArgs;
 
-interface IBrowser extends puppeteer.Browser {
-  port: string | undefined;
-}
+  if (_.isUndefined(defaultArgs) || defaultArgs === 'false') {
+    return false;
+  }
 
-interface ISession {
-  description: string;
-  devtoolsFrontendUrl: string;
-  id: string;
-  title: string;
-  type: string;
-  url: string;
-  webSocketDebuggerUrl: string;
-  port: string;
-}
+  if (defaultArgs === '' || defaultArgs === 'true') {
+    return true;
+  }
 
-export interface ILaunchOptions extends puppeteer.LaunchOptions {
+  return Array.isArray(defaultArgs) ?
+    defaultArgs :
+    defaultArgs.split(',');
+};
+
+const getTargets = async ({ port }: { port: string }): Promise<IJSONList[]> =>
+  fetchJson(`http://127.0.0.1:${port}/json/list`);
+
+const setupPage = async ({
+  page,
+  pauseOnConnect,
+  blockAds,
+  trackingId,
+  windowSize,
+}: {
+  page: puppeteer.Page;
   pauseOnConnect: boolean;
   blockAds: boolean;
-}
+  trackingId: string | null;
+  windowSize?: IWindowSize
+}) => {
+  const client = _.get(page, '_client', _.noop);
 
-const defaultDriverFlags = ['--url-base=webdriver'];
+  await pageHook({ page });
 
-if (fs.existsSync(CHROME_BINARY_LOCATION)) {
-  // If it's installed already, consume it
-  executablePath = CHROME_BINARY_LOCATION;
-} else {
-  // Use puppeteer's copy otherwise
-  const browserFetcher = puppeteer.createBrowserFetcher();
-  const revisionInfo = browserFetcher.revisionInfo(packageJson.puppeteer.chromium_revision);
-  executablePath = revisionInfo.executablePath;
-}
+  // Don't let us intercept these as they're needed by consumers
+  // Fixed in later version of chromium
+  if (USE_CHROME_STABLE || PUPPETEER_CHROMIUM_REVISION <= 706915) {
+    debug(`Patching file-chooser dialog`);
+    client
+      .send('Page.setInterceptFileChooserDialog', { enabled: false })
+      .catch(_.noop);
+  }
+
+  if (!DISABLE_AUTO_SET_DOWNLOAD_BEHAVIOR) {
+    const workspaceDir = trackingId ?
+      path.join(WORKSPACE_DIR, trackingId) :
+      WORKSPACE_DIR;
+
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: workspaceDir,
+    }).catch(_.noop);
+  }
+
+  if (pauseOnConnect && !DISABLED_FEATURES.includes(Features.DEBUG_VIEWER)) {
+    await client.send('Debugger.enable');
+    await client.send('Debugger.pause');
+  }
+
+  if (blockAds) {
+    await page.setRequestInterception(true);
+    page.on('request', networkBlock);
+  }
+
+  if (windowSize) {
+    await page.setViewport(windowSize);
+  }
+
+  page.once('close', () => page.off('request', networkBlock));
+};
+
+const setupBrowser = async ({
+  browser: pptrBrowser,
+  isUsingTempDataDir,
+  prebooted,
+  browserlessDataDir,
+  blockAds,
+  pauseOnConnect,
+  trackingId,
+  keepalive,
+  process,
+  windowSize,
+  port,
+}: {
+  browser: puppeteer.Browser;
+  isUsingTempDataDir: boolean;
+  browserlessDataDir: string | null;
+  blockAds: boolean;
+  pauseOnConnect: boolean;
+  process: ChildProcess;
+  trackingId: string | null;
+  keepalive: number | null;
+  windowSize?: IWindowSize;
+  prebooted: boolean;
+  port: number | string;
+}): Promise<IBrowser> => {
+  debug(`Chrome PID: ${process.pid}`);
+  const browser = pptrBrowser as IBrowser;
+
+  browser._isOpen = true;
+  browser._keepalive = keepalive;
+  browser._browserProcess = process;
+  browser._isUsingTempDataDir = isUsingTempDataDir;
+  browser._browserlessDataDir = browserlessDataDir;
+  browser._trackingId = trackingId;
+  browser._keepaliveTimeout = null;
+  browser._startTime = Date.now();
+  browser._prebooted = prebooted;
+  browser._blockAds = blockAds;
+  browser._pauseOnConnect = pauseOnConnect;
+
+  const { webSocketDebuggerUrl } = await fetchJson(`http://localhost:${port}/json/version`)
+    .catch((err) => {
+      closeBrowser(browser);
+      throw err;
+    });
+
+  browser._parsed = url.parse(webSocketDebuggerUrl, true);
+  browser._wsEndpoint = webSocketDebuggerUrl;
+  browser._id = (browser._parsed.pathname as string).split('/').pop() as string;
+
+  await browserHook({ browser });
+
+  browser._browserProcess.once('exit', (code, signal) => {
+    debug(`Browser process exited with code ${code} and signal ${signal}, cleaning up`);
+    closeBrowser(browser)
+  });
+
+  browser.on('targetcreated', async (target) => {
+    try {
+      const page = await target.page();
+
+      if (page && !page.isClosed()) {
+        // @ts-ignore
+        setupPage({
+          page,
+          windowSize,
+          blockAds: browser._blockAds,
+          pauseOnConnect: browser._pauseOnConnect,
+          trackingId: browser._trackingId,
+        });
+      }
+    } catch (error) {
+      debug(`Error setting up new browser`, error);
+    }
+  });
+
+  const pages = await browser.pages();
+
+  pages.forEach((page) => setupPage({ blockAds, page, pauseOnConnect, trackingId, windowSize }));
+  runningBrowsers.push(browser);
+
+  return browser;
+};
 
 export const defaultLaunchArgs = {
   args: DEFAULT_LAUNCH_ARGS,
@@ -81,7 +236,21 @@ export const defaultLaunchArgs = {
   userDataDir: DEFAULT_USER_DATA_DIR,
 };
 
-export const getRandomSession = () => _.sample(runningBrowsers) as IBrowser | undefined;
+/*
+ * Does a deep check to see if the prebooted chrome's arguments,
+ * and other options, match those requested by the HTTP request
+ */
+export const canUsePrebootedChrome = (launchArgs: ILaunchOptions) => {
+  if (!_.isUndefined(launchArgs.headless) && launchArgs.headless !== defaultLaunchArgs.headless) {
+    return false;
+  }
+
+  if (!_.isUndefined(launchArgs.args) && launchArgs.args.length !== defaultLaunchArgs.args.length) {
+    return false;
+  }
+
+  return true;
+};
 
 export const findSessionForPageUrl = async (pathname: string) => {
   const pages = await getDebuggingPages();
@@ -89,37 +258,115 @@ export const findSessionForPageUrl = async (pathname: string) => {
   return pages.find((session) => session.devtoolsFrontendUrl.includes(pathname));
 };
 
+export const findSessionForBrowserUrl = async (pathname: string) => {
+  const pages = await getDebuggingPages();
+
+  return pages.find((session) => session.browserWSEndpoint.includes(pathname));
+};
+
 export const getDebuggingPages = async (): Promise<ISession[]> => {
   const results = await Promise.all(
     runningBrowsers.map(async (browser) => {
-      const endpoint = browser.wsEndpoint();
-      const { port } = url.parse(endpoint);
-      const host = HOST || '127.0.0.1';
+      const { port } = browser._parsed;
+
+      const externalHost = PROXY_HOST ?
+        `${PROXY_HOST}${PROXY_PORT ? `:${PROXY_PORT}` : ''}` :
+        `${HOST || '127.0.0.1'}:${PORT}`;
+
+      const externalProtocol = PROXY_SSL ? 'wss' : 'ws';
 
       if (!port) {
-        throw new Error('Error locating port in browser endpoint: ${endpoint}');
+        throw new Error(`Error finding port in browser endpoint: ${port}`);
       }
 
-      const sessions: ISession[] = await fetchJson(`http://127.0.0.1:${port}/json/list`);
+      const sessions = await getTargets({ port });
 
-      return sessions.map((session) => ({
-        ...session,
-        port,
+      return sessions
+        .map((session) => {
+          const wsEndpoint = browser._wsEndpoint;
+          const proxyParams = {
+            host: externalHost,
+            protocol: externalProtocol,
+            slashes: true,
+          };
 
-        devtoolsFrontendUrl: session.devtoolsFrontendUrl
-          .replace(port, PORT.toString())
-          .replace('127.0.0.1', host),
-        webSocketDebuggerUrl: session.webSocketDebuggerUrl
-          .replace(port, PORT.toString())
-          .replace('127.0.0.1', host),
-      }));
+          const parsedWebSocketDebuggerUrl = {
+            ...url.parse(session.webSocketDebuggerUrl),
+            ...proxyParams,
+          };
+
+          const parsedWsEndpoint = {
+            ...url.parse(wsEndpoint),
+            ...proxyParams,
+          };
+
+          const browserWSEndpoint = url.format(parsedWsEndpoint);
+          const webSocketDebuggerUrl = url.format(parsedWebSocketDebuggerUrl);
+          const devtoolsFrontendUrl = url.format({
+            pathname: url.parse(session.devtoolsFrontendUrl).pathname,
+            search: `?${externalProtocol}=${externalHost}${parsedWebSocketDebuggerUrl.path}`,
+          });
+
+          return {
+            ...session,
+            browserId: browser._id,
+            browserWSEndpoint,
+            devtoolsFrontendUrl,
+            port,
+            trackingId: browser._trackingId,
+            webSocketDebuggerUrl,
+          };
+        });
     }),
   );
 
   return _.flatten(results);
 };
 
-export const launchChrome = async (opts: ILaunchOptions): Promise<puppeteer.Browser> => {
+export const getBrowsersRunning = () => runningBrowsers.length;
+
+export const convertUrlParamsToLaunchOpts = (req: IHTTPRequest): ILaunchOptions => {
+  const urlParts = req.parsed;
+  const args = _.chain(urlParts.query)
+    .pickBy((_value, param) => _.startsWith(param, '--'))
+    .map((value, key) => `${key}${value ? `=${value}` : ''}`)
+    .value();
+
+  const {
+    blockAds,
+    headless,
+    ignoreHTTPSErrors,
+    slowMo,
+    userDataDir,
+    pause,
+    trackingId,
+    keepalive: keepaliveQuery,
+  } = urlParts.query;
+
+  const isHeadless = !_.isUndefined(headless) ?
+    headless !== 'false' :
+    DEFAULT_HEADLESS;
+
+  const parsedKeepalive = _.parseInt(keepaliveQuery as string);
+  const keepalive = _.isNaN(parsedKeepalive) ? undefined : parsedKeepalive;
+  const parsedIgnoreDefaultArgs = parseIgnoreDefaultArgs(urlParts.query);
+
+  return {
+    args: !_.isEmpty(args) ? args : DEFAULT_LAUNCH_ARGS,
+    blockAds: !_.isUndefined(blockAds) || DEFAULT_BLOCK_ADS,
+    headless: isHeadless,
+    ignoreDefaultArgs: parsedIgnoreDefaultArgs,
+    ignoreHTTPSErrors: !_.isUndefined(ignoreHTTPSErrors) || DEFAULT_IGNORE_HTTPS_ERRORS,
+    keepalive,
+    pauseOnConnect: !_.isUndefined(pause),
+    slowMo: parseInt(slowMo as string, 10) || undefined,
+    trackingId: _.isArray(trackingId) ? trackingId[0] : trackingId,
+    userDataDir: userDataDir as string || DEFAULT_USER_DATA_DIR,
+  };
+};
+
+export const launchChrome = async (opts: ILaunchOptions, isPreboot: boolean): Promise<IBrowser> => {
+  const port = await getPort();
   let isUsingTempDataDir = true;
   let browserlessDataDir: string | null = null;
 
@@ -128,14 +375,19 @@ export const launchChrome = async (opts: ILaunchOptions): Promise<puppeteer.Brow
     args: [
       ...BROWSERLESS_ARGS,
       ...(opts.args || []),
+      `--remote-debugging-port=${port}`
     ],
-    executablePath,
+    executablePath: CHROME_BINARY_LOCATION,
     handleSIGINT: false,
     handleSIGTERM: false,
   };
 
   // Having a user-data-dir in args is higher precedence than in opts
   const hasUserDataDir = _.some((launchArgs.args), (arg) => arg.includes('--user-data-dir='));
+  const isHeadless = launchArgs.args.some(arg => arg.startsWith('--headless')) || (
+    typeof launchArgs.headless === 'undefined' ||
+    launchArgs.headless === true
+  );
 
   if (hasUserDataDir || opts.userDataDir) {
     isUsingTempDataDir = false;
@@ -147,108 +399,131 @@ export const launchChrome = async (opts: ILaunchOptions): Promise<puppeteer.Brow
     launchArgs.args.push(`--user-data-dir=${browserlessDataDir}`);
   }
 
+  // Only use debugging pipe when headless
+  if (isHeadless) {
+    launchArgs.args.push(`--remote-debugging-pipe`);
+  }
+
   debug(`Launching Chrome with args: ${JSON.stringify(launchArgs, null, '  ')}`);
 
-  return puppeteer.launch(launchArgs).then((browser: IBrowser) => {
-    const { port } = url.parse(browser.wsEndpoint());
+  return puppeteer.launch(launchArgs)
+    .then((browser: IBrowser) => setupBrowser({
+      blockAds: opts.blockAds,
+      browser,
+      browserlessDataDir,
+      isUsingTempDataDir,
+      keepalive: opts.keepalive || null,
+      pauseOnConnect: opts.pauseOnConnect,
+      process: browser.process(),
+      trackingId: opts.trackingId || null,
+      windowSize: undefined,
+      prebooted: isPreboot,
+      port,
+    }));
+};
 
-    browser.once('disconnected', () => {
-      if (isUsingTempDataDir && browserlessDataDir) {
-        debug(`Removing temp data-dir ${browserlessDataDir}`);
-        rimraf(browserlessDataDir);
-      }
+export const launchChromeDriver = async ({
+  blockAds = false,
+  trackingId = null,
+  pauseOnConnect = false,
+  browserlessDataDir = null,
+  windowSize,
+  isUsingTempDataDir,
+}: IBrowserlessSessionOptions) => {
+  return new Promise<IChromeDriver>(async (resolve, reject) => {
+    const port = await getPort();
+    let iBrowser = null;
+    const flags = ['--url-base=webdriver', '--verbose', `--port=${port}`, '--whitelisted-ips'];
+    debug(`Launching ChromeDriver with args: ${JSON.stringify(flags)}`);
 
-      runningBrowsers = runningBrowsers.filter((b) => b.wsEndpoint() !== browser.wsEndpoint());
+    const chromeProcess: ChildProcess = await chromeDriver.start(flags, true);
+    const findPort = new Transform({
+      transform: async (chunk, _, done) => {
+        const message = chunk.toString();
+        const match = message.match(/DevTools listening on (ws:\/\/.*)/);
+
+        if (match) {
+          chromeProcess.stderr && chromeProcess.stderr.unpipe(findPort);
+          const [, wsEndpoint] = match;
+          debug(`Attaching to chromedriver browser on ${wsEndpoint}`);
+
+          const browser: puppeteer.Browser = await puppeteer.connect({ browserWSEndpoint: wsEndpoint });
+          const { port } = url.parse(wsEndpoint);
+
+          iBrowser = await setupBrowser({
+            blockAds,
+            browser,
+            browserlessDataDir,
+            isUsingTempDataDir,
+            prebooted: false,
+            keepalive: null,
+            pauseOnConnect,
+            process: chromeProcess,
+            trackingId,
+            windowSize,
+            port: port as string,
+          });
+        }
+
+        done(null, chunk);
+      },
     });
 
-    if (!DISABLE_AUTO_SET_DOWNLOAD_BEHAVIOR) {
-      browser.on('targetcreated', async (target) => {
-        try {
-          const page = await target.page();
-
-          if (page && !page.isClosed()) {
-            // @ts-ignore
-            const client = page._client;
-            if (opts.pauseOnConnect && ENABLE_DEBUG_VIEWER) {
-              await client.send('Debugger.enable');
-              await client.send('Debugger.pause');
-            }
-            if (opts.blockAds) {
-              await page.setRequestInterception(true);
-              page.on('request', (request) => {
-                const fragments = request.url().split('/');
-                const domain = fragments.length > 2 ? fragments[2] : null;
-                if (blacklist.includes(domain)) {
-                  return request.abort();
-                }
-                return request.continue();
-              });
-            }
-            client.send('Page.setDownloadBehavior', {
-              behavior: 'allow',
-              downloadPath: WORKSPACE_DIR,
-            }).catch((error: Error) => debug(`Error setting download paths`, error));
-          }
-        } catch (error) {
-          debug(`Error setting download paths`, error);
-        }
-      });
+    if (!chromeProcess.stderr) {
+      return reject(`Couldn't setup the chromedriver process`);
     }
 
-    browser.port = port;
-
-    runningBrowsers.push(browser);
-
-    return browser;
-  });
-};
-
-export const convertUrlParamsToLaunchOpts = (req: IncomingMessage | express.Request): ILaunchOptions => {
-  const urlParts = url.parse(req.url || '', true);
-  const args = _.chain(urlParts.query)
-    .pickBy((_value, param) => _.startsWith(param, '--'))
-    .map((value, key) => `${key}${value ? `=${value}` : ''}`)
-    .value();
-
-  const {
-    blockAds,
-    headless,
-    ignoreDefaultArgs,
-    ignoreHTTPSErrors,
-    slowMo,
-    userDataDir,
-    pause,
-  } = urlParts.query;
-
-  return {
-    args: !_.isEmpty(args) ? args : DEFAULT_LAUNCH_ARGS,
-    blockAds: !_.isUndefined(blockAds) || DEFAULT_BLOCK_ADS,
-    headless: !_.isUndefined(headless) || DEFAULT_HEADLESS,
-    ignoreDefaultArgs: !_.isUndefined(ignoreDefaultArgs) || DEFAULT_IGNORE_DEFAULT_ARGS,
-    ignoreHTTPSErrors: !_.isUndefined(ignoreHTTPSErrors) || DEFAULT_IGNORE_HTTPS_ERRORS,
-    pauseOnConnect: !_.isUndefined(pause),
-    slowMo: parseInt(slowMo as string, 10) || undefined,
-    userDataDir: userDataDir as string || DEFAULT_USER_DATA_DIR,
-  };
-};
-
-export const launchChromeDriver = async (flags: string[] = defaultDriverFlags) => {
-  debug(`Launching ChromeDriver with args: ${JSON.stringify(flags)}`);
-
-  return new Promise<IChromeDriver>(async (resolve) => {
-    const port = await getPort();
-
-    if (canLog) {
-      flags.push('--verbose');
-    }
-
-    const chromeProcess = await chromeDriver.start([...flags, `--port=${port}`, '--whitelisted-ips'], true);
+    chromeProcess.stderr.pipe(findPort);
 
     return resolve({
+      browser: iBrowser,
       chromeProcess,
       port,
     });
   });
 };
 
-export const getChromePath = () => executablePath;
+export const killAll = async () => {
+  await Promise.all(runningBrowsers.map((browser) => closeBrowser(browser)));
+
+  runningBrowsers = [];
+
+  return;
+};
+
+export const kill = (id: string) => {
+  const browser = runningBrowsers.find((b) => b._id === id);
+
+  if (browser) {
+    return closeBrowser(browser);
+  }
+
+  return null;
+};
+
+export const closeBrowser = async (browser: IBrowser) => {
+  if (!browser._isOpen) {
+    return;
+  }
+
+  browser._isOpen = false;
+  debug(`Shutting down browser with close command`);
+
+  try {
+    browser._keepaliveTimeout && clearTimeout(browser._keepaliveTimeout);
+
+    if (browser._browserlessDataDir) {
+      debug(`Removing temp data-dir ${browser._browserlessDataDir}`);
+      rimraf(browser._browserlessDataDir);
+    }
+
+    runningBrowsers = runningBrowsers.filter((b) => b._wsEndpoint !== browser._wsEndpoint);
+    browser.disconnect();
+    browser.removeAllListeners();
+  } catch (error) {
+    debug(`Browser close emitted an error ${error.message}`);
+  } finally {
+    debug(`Sending SIGKILL signal to browser process ${browser._browserProcess.pid}`);
+    treekill(browser._browserProcess.pid, 'SIGKILL');
+  }
+};

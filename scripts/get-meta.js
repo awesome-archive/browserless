@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /*
   This script sucks out versioning information out from Chrome
   so that we can label builds nicely in docker and facilitate
@@ -11,7 +10,7 @@ const url = require('url');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+const { CHROME_BINARY_LOCATION } = require('../env');
 
 const {
   dependencies: {
@@ -21,12 +20,6 @@ const {
   }
 } = require('../package-lock.json');
 
-const getChromeStablePath = () => {
-  return os.platform() === 'darwin' ?
-    '/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome' :
-    '/usr/bin/google-chrome';
-}
-
 const docsPage = `https://github.com/GoogleChrome/puppeteer/blob/v${puppeteerVersion}/docs/api.md`;
 const versionFile = path.join(__dirname, '..', 'version.json');
 const protocolFile = path.join(__dirname, '..', 'protocol.json');
@@ -34,14 +27,9 @@ const hintsFile = path.join(__dirname, '..', 'hints.json');
 const rejectList = path.join(__dirname, '..', 'hosts.json');
 
 let launchArgs = {
+  executablePath: CHROME_BINARY_LOCATION,
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
 };
-
-if (process.argv.includes('--chrome-stable')) {
-  const chromeStablePath = getChromeStablePath();
-  console.log(`Using Chrome Stable for meta capturing at: "${chromeStablePath}"`);
-  launchArgs.executablePath = chromeStablePath;
-}
 
 const getDocs = (docsPage) => [].map.call(
   $('h4').has('a[href^="#page"]')
@@ -62,7 +50,7 @@ const getDocs = (docsPage) => [].map.call(
 const getMeta = () => puppeteer
   .launch(launchArgs)
   .then((browser) => {
-    console.log('Chrome launched, compiling hints, protocol and version info...');
+    console.log(`Chrome launched at path "${CHROME_BINARY_LOCATION}", compiling hints, protocol and version info...`);
     const wsEndpoint = browser.wsEndpoint();
     const { port } = url.parse(wsEndpoint);
 

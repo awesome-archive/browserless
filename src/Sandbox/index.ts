@@ -1,9 +1,11 @@
 import { ChildProcess, fork } from 'child_process';
-import * as EventEmitter from 'events';
+import { EventEmitter } from 'events';
 import * as path from 'path';
-
-import { IConfig, IMessage } from '../models/sandbox.interface';
 import { getDebug } from '../utils';
+import {
+  IConfig,
+  IMessage,
+} from '../types';
 
 const kill = require('tree-kill');
 const debug = getDebug('sandbox');
@@ -32,6 +34,11 @@ export class BrowserlessSandbox extends EventEmitter {
         this.emit('error', message.context);
         this.close();
       }
+    });
+
+    this.child.on('error', (err) => {
+      debug(`Error in sandbox ${err.message}, closing`);
+      this.close();
     });
 
     this.child.send({

@@ -16,6 +16,8 @@
  */
 module.exports = async function content ({ page, context }) {
   const {
+    addScriptTag = [],
+    addStyleTag = [],
     authenticate = null,
     url = null,
     html,
@@ -24,6 +26,9 @@ module.exports = async function content ({ page, context }) {
     requestInterceptors = [],
     cookies = [],
     setExtraHTTPHeaders = null,
+    setJavaScriptEnabled = null,
+    userAgent = null,
+    waitFor,
   } = context;
 
   if (authenticate) {
@@ -32,6 +37,10 @@ module.exports = async function content ({ page, context }) {
 
   if (setExtraHTTPHeaders) {
     await page.setExtraHTTPHeaders(setExtraHTTPHeaders);
+  }
+
+  if (setJavaScriptEnabled !== null) {
+    await page.setJavaScriptEnabled(setJavaScriptEnabled);
   }
 
   if (rejectRequestPattern.length || requestInterceptors.length) {
@@ -53,6 +62,10 @@ module.exports = async function content ({ page, context }) {
     await page.setCookie(...cookies);
   }
 
+  if (userAgent) {
+    await page.setUserAgent(userAgent);
+  }
+
   if (url !== null) {
     await page.goto(url, gotoOptions);
   } else {
@@ -67,6 +80,32 @@ module.exports = async function content ({ page, context }) {
     });
 
     await page.goto('http://localhost', gotoOptions);
+  }
+
+  if (addStyleTag.length) {
+    for (tag in addStyleTag) {
+      await page.addStyleTag(addStyleTag[tag]);
+    }
+  }
+
+  if (addScriptTag.length) {
+    for (script in addScriptTag) {
+      await page.addScriptTag(addScriptTag[script]);
+    }
+  }
+
+  if (waitFor) {
+    if (typeof waitFor === 'string') {
+      const isSelector = await page.evaluate((s) => {
+        try { document.createDocumentFragment().querySelector(s); }
+        catch (e) { return false; }
+        return true;
+      }, waitFor);
+
+      await (isSelector ? page.waitFor(waitFor) : page.evaluate(`(${waitFor})()`));
+    } else {
+      await page.waitFor(waitFor);
+    }
   }
 
   const data = await page.content();

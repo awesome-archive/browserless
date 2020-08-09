@@ -1,17 +1,14 @@
-import { IJob, IQueue } from './models/queue.interface';
-import { id } from './utils';
+import * as _ from 'lodash';
+import q from 'queue';
+import * as util from './utils';
 
-interface IQueueConfig {
-  autostart: boolean;
-  concurrency: number;
-  maxQueueLength: number;
-  timeout?: number;
-}
-
-const q = require('queue');
+import {
+  IJob,
+  IQueueConfig,
+} from './types';
 
 export class Queue {
-  private queue: IQueue<IJob>;
+  private queue: q;
   private maxQueueLength: number;
 
   constructor(opts: IQueueConfig) {
@@ -29,11 +26,19 @@ export class Queue {
 
   public add(job: IJob) {
     if (!job.id) {
-      job.id = id();
+      job.id = util.id();
     }
 
     if (!this.canRunImmediately) {
       this.queue.emit('queued');
+    }
+
+    if (!job.hasOwnProperty('timeout')) {
+      const timeout = util.getTimeoutParam(job.req);
+
+      if (timeout !== null) {
+        job.timeout = timeout;
+      }
     }
 
     this.queue.push(job);

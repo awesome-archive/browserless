@@ -57,16 +57,23 @@ const buildPages = async (page, opts = {}) => {
 module.exports = async function pdf({ page, context }) {
   const {
     authenticate = null,
+    addScriptTag = [],
+    addStyleTag = [],
     cookies = [],
     emulateMedia,
+    viewport,
     html,
     options,
     url = null,
+    rotate = null,
     safeMode,
     gotoOptions,
     rejectRequestPattern = [],
     requestInterceptors = [],
     setExtraHTTPHeaders,
+    setJavaScriptEnabled = null,
+    userAgent = null,
+    waitFor,
   } = context;
 
   if (authenticate) {
@@ -75,6 +82,10 @@ module.exports = async function pdf({ page, context }) {
 
   if (setExtraHTTPHeaders) {
     await page.setExtraHTTPHeaders(setExtraHTTPHeaders);
+  }
+
+  if (setJavaScriptEnabled !== null) {
+    await page.setJavaScriptEnabled(setJavaScriptEnabled);
   }
 
   if (rejectRequestPattern.length || requestInterceptors.length) {
@@ -100,6 +111,14 @@ module.exports = async function pdf({ page, context }) {
     await page.setCookie(...cookies);
   }
 
+  if (viewport) {
+    await page.setViewport(viewport);
+  }
+
+  if (userAgent) {
+    await page.setUserAgent(userAgent);
+  }
+
   if (url !== null) {
     await page.goto(url, gotoOptions);
   } else {
@@ -116,9 +135,51 @@ module.exports = async function pdf({ page, context }) {
     await page.goto('http://localhost', gotoOptions);
   }
 
-  const data = safeMode ?
+  if (addStyleTag.length) {
+    for (tag in addStyleTag) {
+      await page.addStyleTag(addStyleTag[tag]);
+    }
+  }
+
+  if (addScriptTag.length) {
+    for (script in addScriptTag) {
+      await page.addScriptTag(addScriptTag[script]);
+    }
+  }
+
+  if (waitFor) {
+    if (typeof waitFor === 'string') {
+      const isSelector = await page.evaluate((s) => {
+        try { document.createDocumentFragment().querySelector(s); }
+        catch (e) { return false; }
+        return true;
+      }, waitFor);
+
+      await (isSelector ? page.waitFor(waitFor) : page.evaluate(`(${waitFor})()`));
+    } else {
+      await page.waitFor(waitFor);
+    }
+  }
+
+  let data = safeMode ?
     await buildPages(page, options) :
     await page.pdf(options);
+
+  if (rotate) {
+    const pdftk = require('node-pdftk');
+    const rotateValue = rotate === 90 ?
+      '1-endright' :
+      rotate === -90 ?
+      '1-endleft' :
+      rotate === 180 ?
+      '1-enddown' :
+      '';
+
+    data = await pdftk
+      .input(data)
+      .rotate(rotateValue)
+      .output();
+  }
 
   return {
     data,

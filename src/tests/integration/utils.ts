@@ -2,7 +2,7 @@ import { exec as execNode } from 'child_process';
 import * as _ from 'lodash';
 import * as os from 'os';
 import * as util from 'util';
-import { IBrowserlessOptions } from '../../models/options.interface';
+import { IBrowserlessOptions } from '../../types';
 
 export const exec = util.promisify(execNode);
 export const getPort = () => 3000 + (+_.uniqueId());
@@ -10,18 +10,18 @@ export const defaultParams = (): IBrowserlessOptions => ({
   chromeRefreshTime: 0,
   connectionTimeout: 10000,
   demoMode: false,
+  disabledFeatures: [],
+  enableAPIGet: true,
   enableCors: false,
-  enableDebugViewer: false,
-  enableDebugger: true,
-  enableXvfb: 'CI' in process.env ? true : false,
+  errorAlertURL: null,
   exitOnHealthFailure: false,
   functionBuiltIns: ['url'],
+  functionEnableIncognitoMode: false,
   functionExternals: ['lighthouse'],
   healthFailureURL: null,
   host: '',
   keepAlive: false,
   maxCPU: 100,
-  maxChromeRefreshRetries: 1,
   maxConcurrentSessions: 1,
   maxMemory: 100,
   maxQueueLength: 2,
@@ -30,6 +30,7 @@ export const defaultParams = (): IBrowserlessOptions => ({
   prebootChrome: false,
   queuedAlertURL: null,
   rejectAlertURL: null,
+  singleRun: false,
   timeoutAlertURL: null,
   token: null,
   workspaceDir: os.tmpdir(),

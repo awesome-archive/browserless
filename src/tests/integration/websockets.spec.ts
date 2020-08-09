@@ -1,7 +1,7 @@
 import * as puppeteer from 'puppeteer';
 
 import { BrowserlessServer } from '../../browserless';
-import { IBrowserlessOptions } from '../../models/options.interface';
+import { IBrowserlessOptions } from '../../types';
 import { sleep } from '../../utils';
 
 import {
@@ -83,6 +83,62 @@ describe('Browserless Chrome WebSockets', () => {
     job();
   });
 
+  it('runs with job-based timeouts', async (done) => {
+    const params = defaultParams();
+    const browserless = await start({
+      ...params,
+      connectionTimeout: -1,
+    });
+    await browserless.startServer();
+
+    const job = async () => {
+      await puppeteer.connect({
+        browserWSEndpoint: `ws://127.0.0.1:${params.port}?timeout=100`,
+      }).catch((error) => {
+        expect(error.message).toContain('socket hang up');
+      });
+    };
+
+    browserless.queue.on('end', () => {
+      expect(browserless.currentStat.timedout).toEqual(1);
+      expect(browserless.currentStat.successful).toEqual(0);
+      expect(browserless.currentStat.rejected).toEqual(0);
+      expect(browserless.currentStat.queued).toEqual(0);
+      done();
+    });
+
+    job();
+  });
+
+  it('allows the file-chooser', async (done) => {
+    const params = defaultParams();
+    const browserless = await start(params);
+    await browserless.startServer();
+
+    const job = async () => {
+      const browser = await puppeteer.connect({
+        browserWSEndpoint: `ws://127.0.0.1:${params.port}`,
+      });
+      const [ page ] = await browser.pages();
+
+      await page.setContent(`<div class="output" style="height: 62%;"><label for="avatar">Choose a profile picture:</label>
+        <input type="file" id="avatar" name="avatar" accept="image/png, image/jpeg">
+      </div>`);
+
+      if (page.waitForFileChooser) {
+        const [fileChooser] = await Promise.all([
+          page.waitForFileChooser(),
+          page.click('#avatar'),
+        ]);
+        expect(fileChooser).toEqual(expect.anything());
+      }
+      browser.disconnect();
+      done();
+    };
+
+    job();
+  });
+
   it('queues requests', async (done) => {
     const params = defaultParams();
     const browserless = start({
@@ -127,7 +183,7 @@ describe('Browserless Chrome WebSockets', () => {
         expect(browserless.currentStat.successful).toEqual(0);
         expect(browserless.currentStat.rejected).toEqual(1);
         expect(browserless.currentStat.queued).toEqual(0);
-        expect(error.message).toEqual(`socket hang up`);
+        expect(error.message).toContain(`429`);
       });
   });
 
@@ -146,7 +202,7 @@ describe('Browserless Chrome WebSockets', () => {
         expect(browserless.currentStat.successful).toEqual(0);
         expect(browserless.currentStat.rejected).toEqual(0);
         expect(browserless.currentStat.queued).toEqual(0);
-        expect(error.message).toEqual(`socket hang up`);
+        expect(error.message).toContain(`403`);
       });
   });
 
@@ -165,7 +221,7 @@ describe('Browserless Chrome WebSockets', () => {
         expect(browserless.currentStat.successful).toEqual(0);
         expect(browserless.currentStat.rejected).toEqual(0);
         expect(browserless.currentStat.queued).toEqual(0);
-        expect(error.message).toEqual(`socket hang up`);
+        expect(error.message).toContain(`403`);
       });
   });
 
